@@ -1,87 +1,43 @@
 module ODFReport
 
   class Section
-    include Fields, Nested
-
-    attr_accessor :fields, :tables, :data, :name, :collection_field, :parent
+    include Nested
 
     def initialize(opts)
       @name             = opts[:name]
       @collection_field = opts[:collection_field]
       @collection       = opts[:collection]
-      @parent           = opts[:parent]
 
       @fields = []
       @texts = []
-
       @tables = []
       @sections = []
-    end
 
-    def add_field(name, data_field=nil, &block)
-      opts = {:name => name, :data_field => data_field}
-      field = Field.new(opts, &block)
-      @fields << field
-
-    end
-
-    def add_text(name, data_field=nil, &block)
-      opts = {:name => name, :data_field => data_field}
-      field = Text.new(opts, &block)
-      @texts << field
-
-    end
-
-    def add_table(table_name, collection_field, opts={}, &block)
-      opts.merge!(:name => table_name, :collection_field => collection_field, :parent => self)
-      tab = Table.new(opts)
-      @tables << tab
-
-      yield(tab)
-    end
-
-    def add_section(section_name, collection_field, opts={}, &block)
-      opts.merge!(:name => section_name, :collection_field => collection_field, :parent => self)
-      sec = Section.new(opts)
-      @sections << sec
-
-      yield(sec)
-    end
-
-    def populate!(row)
-      @collection = get_collection_from_item(row, @collection_field) if row
     end
 
     def replace!(doc, row = nil)
 
-      return unless section = find_section_node(doc)
+      return unless @section_node = find_section_node(doc)
 
-      template = section.dup
-
-      populate!(row)
+      @collection = get_collection_from_item(row, @collection_field) if row
 
       @collection.each do |data_item|
-        new_section = template.dup
 
-        @texts.each do |t|
-          t.replace!(new_section, data_item)
-        end
+        new_section = get_section_node
 
-        @tables.each do |t|
-          t.replace!(new_section, data_item)
-        end
+        @tables.each    { |t| t.replace!(new_section, data_item) }
 
-        @sections.each do |s|
-          s.replace!(new_section, data_item)
-        end
+        @sections.each  { |s| s.replace!(new_section, data_item) }
 
-        replace_fields!(new_section, data_item)
+        @texts.each     { |t| t.replace!(new_section, data_item) }
 
-        section.before(new_section)
+        @fields.each    { |f| f.replace!(new_section, data_item) }
+
+        @section_node.before(new_section)
 
       end
 
-      section.remove
+      @section_node.remove
 
     end # replace_section
 
@@ -95,8 +51,16 @@ module ODFReport
 
     end
 
+    def get_section_node
+      node = @section_node.dup
+
+      name = node.get_attribute('text:name').to_s
+      @idx ||=0; @idx +=1
+      node.set_attribute('text:name', "#{name}_#{@idx}")
+
+      node
+    end
+
   end
 
 end
-
-

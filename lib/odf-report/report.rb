@@ -1,9 +1,7 @@
 module ODFReport
 
 class Report
-  include Fields, Images
-
-  attr_accessor :fields, :tables, :images, :sections, :file, :texts
+  include Images
 
   def initialize(template_name, &block)
 
@@ -20,19 +18,19 @@ class Report
 
   end
 
-  def add_field(field_tag, value='', &block)
+  def add_field(field_tag, value='')
     opts = {:name => field_tag, :value => value}
-    field = Field.new(opts, &block)
+    field = Field.new(opts)
     @fields << field
   end
 
-  def add_text(field_tag, value='', &block)
+  def add_text(field_tag, value='')
     opts = {:name => field_tag, :value => value}
     text = Text.new(opts)
     @texts << text
   end
 
-  def add_table(table_name, collection, opts={}, &block)
+  def add_table(table_name, collection, opts={})
     opts.merge!(:name => table_name, :collection => collection)
     tab = Table.new(opts)
     @tables << tab
@@ -40,7 +38,7 @@ class Report
     yield(tab)
   end
 
-  def add_section(section_name, collection, opts={}, &block)
+  def add_section(section_name, collection, opts={})
     opts.merge!(:name => section_name, :collection => collection)
     sec = Section.new(opts)
     @sections << sec
@@ -52,40 +50,37 @@ class Report
     @images[name] = path
   end
 
-  def generate(dest = nil, &block)
+  def generate(dest = nil)
 
-    @file.create(dest)
+    @file.update_content do |file|
 
-    @file.update('content.xml', 'styles.xml') do |txt|
+      file.update_files('content.xml', 'styles.xml') do |txt|
 
-      parse_document(txt) do |doc|
+        parse_document(txt) do |doc|
 
-        replace_texts!(doc)
-        replace_fields!(doc)
+          @sections.each { |s| s.replace!(doc) }
+          @tables.each   { |t| t.replace!(doc) }
 
-        replace_sections!(doc)
-        replace_tables!(doc)
+          @texts.each    { |t| t.replace!(doc) }
+          @fields.each   { |f| f.replace!(doc) }
 
-        find_image_name_matches(doc)
-        avoid_duplicate_image_names(doc)
+          find_image_name_matches(doc)
+          avoid_duplicate_image_names(doc)
+
+        end
 
       end
 
+      replace_images(file)
+
     end
 
-    replace_images(@file)
-
-    if block_given?
-      yield @file.path
-      @file.remove
+    if dest
+      ::File.open(dest, "wb") {|f| f.write(@file.data) }
+    else
+      @file.data
     end
 
-    @file.path
-
-  end
-
-  def cleanup
-    @file.remove
   end
 
 private
@@ -93,29 +88,7 @@ private
   def parse_document(txt)
     doc = Nokogiri::XML(txt)
     yield doc
-    txt.replace(doc.to_s)
-  end
-
-  def replace_fields!(content)
-    field_replace!(content)
-  end
-
-  def replace_texts!(content)
-    @texts.each do |text|
-      text.replace!(content)
-    end
-  end
-
-  def replace_tables!(content)
-    @tables.each do |table|
-      table.replace!(content)
-    end
-  end
-
-  def replace_sections!(content)
-    @sections.each do |section|
-      section.replace!(content)
-    end
+    txt.replace(doc.to_xml(:save_with => Nokogiri::XML::Node::SaveOptions::AS_XML))
   end
 
 end
